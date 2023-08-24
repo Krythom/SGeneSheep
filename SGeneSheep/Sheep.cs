@@ -12,20 +12,18 @@ namespace SGeneSheep
     {
         public Color color;
         public int species;
-        public bool awake;
         public int x;
         public int y;
 
-        public Sheep(Color color, int species, bool awake) 
+        public Sheep(Color color, int species) 
         {
             this.color = color;
             this.species = species;
-            this.awake = awake;
         }
 
         public Sheep DeepCopy()
         {
-            Sheep copy = new(color, species, awake);
+            Sheep copy = new(color, species);
             return copy;
         }
     }

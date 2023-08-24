@@ -3,6 +3,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 
 namespace SGeneSheep
@@ -18,6 +19,9 @@ namespace SGeneSheep
         int worldSize;
         int cellSize;
         int numSpecies;
+        HashSet<Point> checkSet = new();
+        HashSet<Point> toSleep = new HashSet<Point>();
+        HashSet<Point> toWake = new HashSet<Point>();
 
         public GeneSheep()
         {
@@ -25,6 +29,18 @@ namespace SGeneSheep
             Content.RootDirectory = "Content";
             IsMouseVisible = true;
             IsFixedTimeStep = false;
+        }
+
+        public struct SheepChange
+        {
+            public Point loc;
+            public int id;
+            public Color color;
+
+            public override int GetHashCode()
+            {
+                return loc.GetHashCode();
+            }
         }
 
         protected override void Initialize()
@@ -38,7 +54,7 @@ namespace SGeneSheep
             _graphics.PreferredBackBufferHeight = worldSize * cellSize;
             _graphics.PreferredBackBufferWidth = worldSize * cellSize;
             _graphics.SynchronizeWithVerticalRetrace = false;
-_graphics.ApplyChanges();
+            _graphics.ApplyChanges();
             base.Initialize();
         }
 
@@ -52,7 +68,7 @@ _graphics.ApplyChanges();
         {
             Iterate();
             double ms = gameTime.ElapsedGameTime.TotalMilliseconds;
-            Debug.WriteLine("fps: " + (int)(1000/ms));
+            Debug.WriteLine("fps: " + (1000/ms) + "    (" + ms + "ms)");
             base.Update(gameTime);
         }
 
@@ -78,7 +94,7 @@ _graphics.ApplyChanges();
         {
             for (int i = 0; i < numSpecies; i++)
             {
-                species.Add(new Sheep(new Color(rand.Next(256), rand.Next(256), rand.Next(256)), i, true));
+                species.Add(new Sheep(new Color(rand.Next(256), rand.Next(256), rand.Next(256)), i));
             }
             for (int x = 0; x < worldSize; x++)
             {
@@ -87,6 +103,7 @@ _graphics.ApplyChanges();
                     world[x, y] = species[rand.Next(numSpecies)].DeepCopy();
                     world[x, y].x = x;
                     world[x, y].y = y;
+                    checkSet.Add(new Point(x, y));
                 }
             }
         }
@@ -95,40 +112,44 @@ _graphics.ApplyChanges();
         {
             Sheep[,] newWorld = new Sheep[worldSize, worldSize];
 
-            for (int x = 0; x < worldSize; x++)
-            {
-                for (int y = 0; y < worldSize; y++)
-                {
-                    if (world[x, y].awake)
-                    {
-                        int winningSpecies = GetWinner(world[x, y]);
-                        newWorld[x, y] = new(GetNewColor(world[x, y], winningSpecies), winningSpecies, world[x, y].awake)
-                        {
-                            x = x,
-                            y = y
-                        };
+            List<SheepChange> changed = new();
 
-                        if (winningSpecies != world[x, y].species)
-                        {
-                            for (int xDiff = -1; xDiff <= 1; xDiff++)
-                            {
-                                for (int yDiff = -1; yDiff <= 1; yDiff++)
-                                {
-                                    int getX = Mod(x + xDiff, worldSize);
-                                    int getY = Mod(y + yDiff, worldSize);
-                                    world[getX, getY].awake = true;
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        newWorld[x, y] = world[x, y];
-                    }
+            foreach (Point loc in checkSet)
+            {
+                int x = loc.X;
+                int y = loc.Y;
+                Sheep s = world[x, y];
+                int winningSpecies = GetWinner(s);
+
+                if (winningSpecies != s.species)
+                {
+                    changed.Add(new() { color = GetNewColor(s, winningSpecies), id = winningSpecies, loc = loc });
                 }
             }
 
-            world = newWorld;
+            foreach (SheepChange c in changed)
+            {
+                Sheep s = world[c.loc.X, c.loc.Y];
+                s.species = c.id;
+                s.color = c.color;
+            }
+        }
+
+        private List<Sheep> GetNeighbours(Sheep s)
+        {
+            List<Sheep> sheep = new()
+            {
+                world[Mod(s.x + -1, worldSize), Mod(s.y + -1, worldSize)],
+                world[Mod(s.x + 0, worldSize), Mod(s.y + -1, worldSize)],
+                world[Mod(s.x + 1, worldSize), Mod(s.y + -1, worldSize)],
+                world[Mod(s.x + -1, worldSize), Mod(s.y , worldSize)],
+                world[Mod(s.x + 1, worldSize), Mod(s.y, worldSize)],
+                world[Mod(s.x + -1, worldSize), Mod(s.y + 1, worldSize)],
+                world[Mod(s.x + 0, worldSize), Mod(s.y + 1, worldSize)],
+                world[Mod(s.x + 1, worldSize), Mod(s.y + 1, worldSize)],
+
+            };
+            return sheep;
         }
 
         private int GetWinner(Sheep sheep)
@@ -142,7 +163,7 @@ _graphics.ApplyChanges();
                     int getX = Mod(x + sheep.x, worldSize);
                     int getY = Mod(y + sheep.y, worldSize);
                     if (!(getX == sheep.x && getY == sheep.y))
-                    {
+            {
                         neighborSpecies[world[getX, getY].species]++;
                     }
                 }
@@ -167,7 +188,7 @@ _graphics.ApplyChanges();
 
             if (neighborSpecies[sheep.species] == 8)
             {
-                sheep.awake = false;
+                // do something
             }
 
             return winningSpecies;
