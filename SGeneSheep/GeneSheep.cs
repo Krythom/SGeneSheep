@@ -21,6 +21,7 @@ namespace SGeneSheep
         int cellSize;
         int numSpecies;
         HashSet<Point> checkSet = new();
+        const int colorVariation = 1;
 
         public GeneSheep()
         {
@@ -111,7 +112,7 @@ namespace SGeneSheep
         {
             Sheep[,] newWorld = new Sheep[worldSize, worldSize];
 
-            List<SheepChange> changed = new();
+            List<SheepChange> changed = new() { Capacity = (int)Math.Pow(worldSize, 2) };
             HashSet<Point> toSleep = new();
             HashSet<Point> toWake = new();
 
@@ -224,6 +225,9 @@ namespace SGeneSheep
                 }
             }
             Color newCol = winners[0].color;
+            newCol.R = (byte)(Math.Clamp(newCol.R + rand.Next(-colorVariation, colorVariation + 1), 0, 255));
+            newCol.G = (byte)(Math.Clamp(newCol.G + rand.Next(-colorVariation, colorVariation + 1), 0, 255));
+            newCol.B = (byte)(Math.Clamp(newCol.B + rand.Next(-colorVariation, colorVariation + 1), 0, 255));
             return newCol;
         }
 
