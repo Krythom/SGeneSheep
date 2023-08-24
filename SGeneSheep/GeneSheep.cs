@@ -3,9 +3,9 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace SGeneSheep
 {
@@ -115,7 +115,7 @@ namespace SGeneSheep
             HashSet<Point> toSleep = new();
             HashSet<Point> toWake = new();
 
-            foreach (Point loc in checkSet)
+            Parallel.ForEach(checkSet, loc =>
             {
                 int x = loc.X;
                 int y = loc.Y;
@@ -123,15 +123,20 @@ namespace SGeneSheep
                 int winningSpecies = GetWinner(s, out bool sleep);
                 if (sleep)
                 {
-                    toSleep.Add(loc);
+                    lock (toSleep)
+                    {
+                        toSleep.Add(loc);
+                    }
                 }
-
-                if (winningSpecies != s.species)
+                else if (winningSpecies != s.species)
                 {
                     changed.Add(new() { color = GetNewColor(s, winningSpecies), id = winningSpecies, loc = loc });
-                    toWake.UnionWith(GetNeighbours(s).Select(x => { return x.GetPoint(); }));
+                    lock (toWake)
+                    {
+                        toWake.UnionWith(GetNeighbours(s).Select(x => { return x.GetPoint(); }));
+                    }
                 }
-            }
+            });
 
             foreach (SheepChange c in changed)
             {
