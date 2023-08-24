@@ -21,6 +21,11 @@ namespace SGeneSheep
             this.species = species;
         }
 
+        public Point GetPoint()
+        {
+            return new Point(x, y);
+        }
+
         public Sheep DeepCopy()
         {
             Sheep copy = new(color, species);

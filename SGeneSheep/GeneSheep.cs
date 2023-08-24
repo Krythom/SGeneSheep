@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
+using System.Linq;
 
 namespace SGeneSheep
 {
@@ -20,8 +21,6 @@ namespace SGeneSheep
         int cellSize;
         int numSpecies;
         HashSet<Point> checkSet = new();
-        HashSet<Point> toSleep = new HashSet<Point>();
-        HashSet<Point> toWake = new HashSet<Point>();
 
         public GeneSheep()
         {
@@ -113,17 +112,24 @@ namespace SGeneSheep
             Sheep[,] newWorld = new Sheep[worldSize, worldSize];
 
             List<SheepChange> changed = new();
+            HashSet<Point> toSleep = new();
+            HashSet<Point> toWake = new();
 
             foreach (Point loc in checkSet)
             {
                 int x = loc.X;
                 int y = loc.Y;
                 Sheep s = world[x, y];
-                int winningSpecies = GetWinner(s);
+                int winningSpecies = GetWinner(s, out bool sleep);
+                if (sleep)
+                {
+                    toSleep.Add(loc);
+                }
 
                 if (winningSpecies != s.species)
                 {
                     changed.Add(new() { color = GetNewColor(s, winningSpecies), id = winningSpecies, loc = loc });
+                    toWake.UnionWith(GetNeighbours(s).Select(x => { return x.GetPoint(); }));
                 }
             }
 
@@ -133,6 +139,8 @@ namespace SGeneSheep
                 s.species = c.id;
                 s.color = c.color;
             }
+            checkSet.UnionWith(toWake);
+            checkSet.ExceptWith(toSleep);
         }
 
         private List<Sheep> GetNeighbours(Sheep s)
@@ -152,9 +160,10 @@ namespace SGeneSheep
             return sheep;
         }
 
-        private int GetWinner(Sheep sheep)
+        private int GetWinner(Sheep sheep, out bool toSleep)
         {
             int[] neighborSpecies = new int[numSpecies];
+            toSleep = false;
 
             for (int x = -1; x <= 1; x++)
             {
@@ -188,7 +197,7 @@ namespace SGeneSheep
 
             if (neighborSpecies[sheep.species] == 8)
             {
-                // do something
+                toSleep = true;
             }
 
             return winningSpecies;
