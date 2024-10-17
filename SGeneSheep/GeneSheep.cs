@@ -16,6 +16,7 @@ namespace SGeneSheep
 {
     public class GeneSheep : Game
     {
+        private readonly List<SheepChange> _changed;
         private GraphicsDeviceManager _graphics;
         private SpriteBatch _spriteBatch;
         readonly Random rand = new();
@@ -23,22 +24,24 @@ namespace SGeneSheep
         Sheep[,] world;
         List<Sheep> species = new();
 
+
         bool completed = false;
         bool saved = false;
         int iterations = 0;
         HashSet<Point> checkSet = new();
-        Mutator mutator;
 
-        int worldX = 300;
-        int worldY = 300;
+        int worldX = 500;
+        int worldY = 500;
         int numSpecies = 10;
         const double Tolerance = 10;
-        const int CellSize = 3;
+        const int CellSize = 2;
         const int ColorVariation = 1;
         const int MaxIterations = -1;
         const bool BatchMode = false;
         const bool ShowBorders = false;
         const bool FromImage = false;
+
+        private const int _speedup = 50;
 
         public GeneSheep()
         {
@@ -46,6 +49,7 @@ namespace SGeneSheep
             Content.RootDirectory = "Content";
             IsMouseVisible = true;
             IsFixedTimeStep = false;
+            _changed = new() { Capacity = worldX * worldY };
         }
 
         public struct SheepChange
@@ -67,6 +71,7 @@ namespace SGeneSheep
             _graphics.PreferredBackBufferWidth = worldX * CellSize;
             _graphics.SynchronizeWithVerticalRetrace = false;
             _graphics.ApplyChanges();
+            InactiveSleepTime = new TimeSpan(0);
             base.Initialize();
         }
 
@@ -97,6 +102,10 @@ namespace SGeneSheep
             {
                 Iterate();
                 iterations++;
+                if (_speedup == 0 || iterations % _speedup != 0)
+                {
+                    SuppressDraw();
+                }
             }
 
             double ms = gameTime.ElapsedGameTime.TotalMilliseconds;
@@ -193,7 +202,6 @@ namespace SGeneSheep
         {
             Sheep[,] newWorld = new Sheep[worldX, worldY];
 
-            List<SheepChange> changed = new() { Capacity = worldX * worldY};
             HashSet<Point> toSleep = new();
             HashSet<Point> toWake = new();
 
@@ -212,7 +220,7 @@ namespace SGeneSheep
                 }
                 else if (winningSpecies != s.species)
                 {
-                    changed.Add(new() { color = Mutator.Uniform(), id = winningSpecies, loc = loc });
+                    _changed.Add(new() { color = Mutator.Uniform(), id = winningSpecies, loc = loc });
                     lock (toWake)
                     {
                         toWake.UnionWith(GetNeighbours(s).Select(x => { return x.GetPoint(); }));
@@ -220,19 +228,20 @@ namespace SGeneSheep
                 }
             });
 
-            foreach (SheepChange c in changed)
+            foreach (SheepChange c in _changed)
             {
                 Sheep s = world[c.loc.X, c.loc.Y];
                 s.species = c.id;
                 s.color = c.color;
             }
-            if (changed.Count == 0 || iterations == MaxIterations)
+            if (_changed.Count == 0 || iterations == MaxIterations)
             {
                 completed = true;
             }
 
             checkSet.UnionWith(toWake);
             checkSet.ExceptWith(toSleep);
+            _changed.Clear();
 
             Mutator.uniformCol = new Color(Mutator.uniformCol.R + rand.Next(-ColorVariation, ColorVariation + 1),
                                            Mutator.uniformCol.G + rand.Next(-ColorVariation, ColorVariation + 1),
