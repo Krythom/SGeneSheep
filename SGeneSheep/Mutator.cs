@@ -89,7 +89,7 @@ namespace SGeneSheep
         {
             Color newCol;
             List<Sheep> neighbors = GetNeighbours(world, sheep, true);
-            int lowest = 900;
+            int lowest = 999;
             int lowestIndex = 0;
             int current = 0;
 
@@ -108,7 +108,13 @@ namespace SGeneSheep
             newCol.R = (byte)(Math.Clamp(newCol.R + rand.Next(-mutationStrength, mutationStrength + 1), 0, 255));
             newCol.G = (byte)(Math.Clamp(newCol.G + rand.Next(-mutationStrength, mutationStrength + 1), 0, 255));
             newCol.B = (byte)(Math.Clamp(newCol.B + rand.Next(-mutationStrength, mutationStrength + 1), 0, 255));
+
             return newCol;
+        }
+
+        public static Color ThrowAway(Color col)
+        {
+            return new Color(col.R + 1, col.R + 1, col.R + 1);
         }
 
         public static Color Mirror(Sheep[,] world, Sheep sheep, int winner)
