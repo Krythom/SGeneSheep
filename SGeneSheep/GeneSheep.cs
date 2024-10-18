@@ -2,6 +2,7 @@
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -11,6 +12,8 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using SColor = System.Drawing.Color;
 using Bitmap = System.Drawing.Bitmap;
+using System.Runtime.CompilerServices;
+using CommunityToolkit.HighPerformance;
 
 namespace SGeneSheep
 {
@@ -20,7 +23,7 @@ namespace SGeneSheep
         private GraphicsDeviceManager _graphics;
         private SpriteBatch _spriteBatch;
         readonly Random rand = new();
-        Texture2D square;
+        private readonly RandomEx _randBools = new();
         Sheep[,] world;
         List<Sheep> species = new();
 
@@ -34,14 +37,18 @@ namespace SGeneSheep
         int worldY = 500;
         int numSpecies = 10;
         const double Tolerance = 10;
-        const int CellSize = 2;
         const int ColorVariation = 1;
         const int MaxIterations = -1;
         const bool BatchMode = false;
-        const bool ShowBorders = false;
         const bool FromImage = false;
 
-        private const int _speedup = 50;
+        private const int _speedup = 1;
+
+        private int[] neighborSpecies;
+
+        private Texture2D _tex;
+        private Color[] _backingColors;
+        private Memory2D<Color> _colors;
 
         public GeneSheep()
         {
@@ -67,8 +74,8 @@ namespace SGeneSheep
         protected override void Initialize()
         {
             InitWorld();
-            _graphics.PreferredBackBufferHeight = worldY * CellSize;
-            _graphics.PreferredBackBufferWidth = worldX * CellSize;
+            _graphics.PreferredBackBufferHeight = 1000;
+            _graphics.PreferredBackBufferWidth = 1000;
             _graphics.SynchronizeWithVerticalRetrace = false;
             _graphics.ApplyChanges();
             InactiveSleepTime = new TimeSpan(0);
@@ -78,7 +85,6 @@ namespace SGeneSheep
         protected override void LoadContent()
         {
             _spriteBatch = new SpriteBatch(GraphicsDevice);
-            square = Content.Load<Texture2D>("whiteSquare");
         }
 
         protected override void Update(GameTime gameTime)
@@ -90,6 +96,7 @@ namespace SGeneSheep
                     SaveImage();
                     saved = true;
                 }
+
                 if (BatchMode)
                 {
                     completed = false;
@@ -109,44 +116,34 @@ namespace SGeneSheep
             }
 
             double ms = gameTime.ElapsedGameTime.TotalMilliseconds;
-            Debug.WriteLine("fps: " + (1000/ms) + " (" + ms + "ms)" + " iterations: " + iterations + "/" + MaxIterations + " active " + checkSet.Count);
+            Debug.WriteLine("fps: " + (1000 / ms) + " (" + ms + "ms)" + " iterations: " + iterations + "/" +
+                            MaxIterations + " active " + checkSet.Count);
             base.Update(gameTime);
         }
 
         protected override void Draw(GameTime gameTime)
         {
-            
             _spriteBatch.Begin();
-
-            for (int x = 0; x < worldX; x++)
-            {
-                for (int y = 0; y < worldY; y++)
-                {
-                    if (checkSet.Contains(new Point(x, y)) && ShowBorders)
-                    {
-                        Rectangle squarePos = new(new Point((x * CellSize), (y * CellSize)), new Point(CellSize, CellSize));
-                        _spriteBatch.Draw(square, squarePos, new Color(255,255,255));
-                    }
-                    else
-                    {
-                        Rectangle squarePos = new(new Point((x * CellSize), (y * CellSize)), new Point(CellSize, CellSize));
-                        _spriteBatch.Draw(square, squarePos, world[x, y].color);
-                    }
-                }
-            }
-
+            _tex.SetData(_backingColors);
+            _spriteBatch.Draw(_tex, new Rectangle(0,0,1000,1000), Color.White);
             _spriteBatch.End();
             base.Draw(gameTime);
         }
 
         private void InitWorld()
         {
+            neighborSpecies = new int[numSpecies];
+            _backingColors = new Color[worldX * worldY];
+            _colors = new Memory2D<Color>(_backingColors, worldX, worldY);
+            _tex = new Texture2D(GraphicsDevice, worldX, worldY);
+
             if (FromImage)
             {
                 if (!Directory.Exists(@"Images"))
                 {
                     Directory.CreateDirectory(@"Images");
                 }
+
                 try
                 {
                     Bitmap img = new(@"Images\input.png");
@@ -160,11 +157,12 @@ namespace SGeneSheep
                         for (int y = 0; y < worldY; y++)
                         {
                             Color col = new(img.GetPixel(x, y).R, img.GetPixel(x, y).G, img.GetPixel(x, y).B);
-                            int steps = (int)(GetDistance(sample, col) / Tolerance);
+                            int steps = (int) (GetDistance(sample, col) / Tolerance);
                             if (steps >= numSpecies)
                             {
                                 numSpecies = steps + 1;
                             }
+
                             world[x, y] = new Sheep(col, steps);
                             world[x, y].x = x;
                             world[x, y].y = y;
@@ -185,6 +183,7 @@ namespace SGeneSheep
                 {
                     species.Add(new Sheep(Mutator.uniformCol, i));
                 }
+
                 for (int x = 0; x < worldX; x++)
                 {
                     for (int y = 0; y < worldY; y++)
@@ -192,55 +191,63 @@ namespace SGeneSheep
                         world[x, y] = species[rand.Next(numSpecies)].DeepCopy();
                         world[x, y].x = x;
                         world[x, y].y = y;
+                        _colors.Span[x, y] = world[x, y].color;
                         checkSet.Add(new Point(x, y));
                     }
                 }
             }
         }
 
+        HashSet<Point> toSleep = new();
+        HashSet<Point> toWake = new();
+
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
         private void Iterate()
         {
-            Sheep[,] newWorld = new Sheep[worldX, worldY];
+            var colors = _colors.Span;
+            toSleep.Clear();
+            toWake.Clear();
 
-            HashSet<Point> toSleep = new();
-            HashSet<Point> toWake = new();
-
-            Parallel.ForEach(checkSet, loc =>
+            foreach (var loc in checkSet)
             {
-                int x = loc.X;
-                int y = loc.Y;
+                (int x, int y) = loc;
                 Sheep s = world[x, y];
                 int winningSpecies = GetWinner(s, out bool sleep);
+
                 if (sleep)
                 {
-                    lock (toSleep)
-                    {
-                        toSleep.Add(loc);
-                    }
+                    toSleep.Add(loc);
                 }
                 else if (winningSpecies != s.species)
                 {
                     _changed.Add(new() { color = Mutator.Uniform(), id = winningSpecies, loc = loc });
-                    lock (toWake)
+
+                    foreach (var (dx, dy) in dirs)
                     {
-                        toWake.UnionWith(GetNeighbours(s).Select(x => { return x.GetPoint(); }));
+                        var xp = Mod(s.x + dx, worldX);
+                        var yp = Mod(s.y + dy, worldY);
+                        
+                        toWake.Add(world[xp, yp].GetPoint());
                     }
                 }
-            });
+            }
 
             foreach (SheepChange c in _changed)
             {
                 Sheep s = world[c.loc.X, c.loc.Y];
                 s.species = c.id;
                 s.color = c.color;
+                colors[c.loc.X, c.loc.Y] = s.color;
             }
-            if (_changed.Count == 0 || iterations == MaxIterations)
+
+            if (_changed is [] || iterations == MaxIterations)
             {
                 completed = true;
             }
 
             checkSet.UnionWith(toWake);
             checkSet.ExceptWith(toSleep);
+
             _changed.Clear();
 
             Mutator.uniformCol = new Color(Mutator.uniformCol.R + rand.Next(-ColorVariation, ColorVariation + 1),
@@ -248,37 +255,56 @@ namespace SGeneSheep
                                            Mutator.uniformCol.B + rand.Next(-ColorVariation, ColorVariation + 1));
         }
 
-        private List<Sheep> GetNeighbours(Sheep s)
-        {
-            List<Sheep> sheep = new()
-            {
-                world[Mod(s.x + -1, worldX), Mod(s.y + -1, worldY)],
-                world[Mod(s.x + 0, worldX), Mod(s.y + -1, worldY)],
-                world[Mod(s.x + 1, worldX), Mod(s.y + -1, worldY)],
-                world[Mod(s.x + -1, worldX), Mod(s.y, worldY)],
-                world[Mod(s.x + 1, worldX), Mod(s.y, worldY)],
-                world[Mod(s.x + -1, worldX), Mod(s.y + 1, worldY)],
-                world[Mod(s.x + 0, worldX), Mod(s.y + 1, worldY)],
-                world[Mod(s.x + 1, worldX), Mod(s.y + 1, worldY)],
+        private static readonly (int, int)[] dirs =
+        [
+            (-1, -1),
+            (0, -1),
+            (1, -1),
+            (-1, 0),
+            (1, 0),
+            (-1, 1),
+            (0, 1),
+            (1, 1)
+        ];
 
-            };
-            return sheep;
+        public class RandomEx : Random
+        {
+            private uint _boolBits;
+
+            public RandomEx() : base()
+            {
+            }
+
+            public RandomEx(int seed) : base(seed)
+            {
+            }
+
+            public bool NextBoolean()
+            {
+                _boolBits >>= 1;
+                if (_boolBits <= 1) _boolBits = (uint) ~this.Next();
+                return (_boolBits & 1) == 0;
+            }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
         private int GetWinner(Sheep sheep, out bool toSleep)
         {
-            int[] neighborSpecies = new int[numSpecies];
+            Span<int> span = neighborSpecies.AsSpan();
+            span.Clear();
+
             toSleep = false;
 
             for (int x = -1; x <= 1; x++)
             {
                 for (int y = -1; y <= 1; y++)
                 {
-                    int getX = Mod(x + sheep.x, worldX);
-                    int getY = Mod(y + sheep.y, worldY);
-                    if (!(getX == sheep.x && getY == sheep.y))
+                    var xp = Mod(sheep.x + x, worldX);
+                    var yp = Mod(sheep.y + y, worldY);
+
+                    if (!(xp == sheep.x && yp == sheep.y))
                     {
-                        neighborSpecies[world[getX, getY].species]++;
+                        span[world[xp, yp].species]++;
                     }
                 }
             }
@@ -288,19 +314,14 @@ namespace SGeneSheep
 
             for (int i = 0; i < numSpecies; i++)
             {
-                if (neighborSpecies[i] > highest)
+                if (span[i] > highest || (span[i] == highest && _randBools.NextBoolean()))
                 {
                     winningSpecies = i;
-                    highest = neighborSpecies[i];
-                }
-                else if (neighborSpecies[i] == highest && rand.NextDouble() > 0.5)
-                {
-                    winningSpecies = i;
-                    highest = neighborSpecies[i];
+                    highest = span[i];
                 }
             }
 
-            if (neighborSpecies[sheep.species] == 8)
+            if (span[sheep.species] == 8)
             {
                 toSleep = true;
             }
@@ -322,7 +343,8 @@ namespace SGeneSheep
                     }
                 }
 
-                img.Save(@"ScreenCap_n" + numSpecies + "_v" + ColorVariation + "_i" + iterations + ".png", System.Drawing.Imaging.ImageFormat.Png);
+                img.Save(@"ScreenCap_n" + numSpecies + "_v" + ColorVariation + "_i" + iterations + ".png",
+                    System.Drawing.Imaging.ImageFormat.Png);
             }
         }
 
@@ -334,9 +356,11 @@ namespace SGeneSheep
 
         private static double GetDistance(Color sample, Color col)
         {
-            return Math.Pow(Math.Pow(sample.R - col.R, 2) + Math.Pow(sample.G - col.G, 2) + Math.Pow(sample.B - col.B, 2), 0.5);
+            return Math.Pow(
+                Math.Pow(sample.R - col.R, 2) + Math.Pow(sample.G - col.G, 2) + Math.Pow(sample.B - col.B, 2), 0.5);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         private static int Mod(int x, int m)
         {
             return (Math.Abs(x * m) + x) % m;
