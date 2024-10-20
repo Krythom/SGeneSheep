@@ -10,12 +10,12 @@ namespace SGeneSheep
 {
     internal class Sheep
     {
-        public Color color;
+        public ColorSpace color;
         public int species;
         public int x;
         public int y;
 
-        public Sheep(Color color, int species) 
+        public Sheep(ColorSpace color, int species) 
         {
             this.color = color;
             this.species = species;
@@ -28,7 +28,7 @@ namespace SGeneSheep
 
         public Sheep DeepCopy()
         {
-            Sheep copy = new(color, species);
+            Sheep copy = new(color.DeepCopy(), species);
             return copy;
         }
     }

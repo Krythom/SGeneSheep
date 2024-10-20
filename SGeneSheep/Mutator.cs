@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -11,14 +12,14 @@ namespace SGeneSheep
     {
         static int[] dis = new[] { -1, -1, -1, 0, 1, 1, 1, 0 };
         static int[] djs = new[] { -1, 0, 1, 1, 1, 0, -1, -1 };
-        public static int mutationStrength;
+        public static float mutationStrength;
         static Random rand = new();
-        public static Color uniformCol = new Color(rand.Next(256), rand.Next(256), rand.Next(256));
+        public static HSL uniformCol = new HSL(rand.Next(360), 0.7f, 0.4f);
 
         //At an offset of 4 makes spiral structures, as offset gets closer to 0 spirals become less distinct 
-        public static Color Spiral(Sheep[,] world, Sheep sheep, int winner, int offset)
+        public static ColorSpace Spiral(Sheep[,] world, Sheep sheep, int winner, int offset)
         {
-            Color newCol;
+            ColorSpace newCol;
             int worldX = world.GetLength(0);
             int worldY = world.GetLength(1);
             bool prev = world[Mod(sheep.x + dis[^1], worldX), Mod(sheep.y + djs[^1], worldY)].species == winner;
@@ -74,28 +75,32 @@ namespace SGeneSheep
                 newCol = world[Mod(sheep.x + dis[start], worldX), Mod(sheep.y + djs[start], worldY)].color;
             }
 
-            newCol.R = (byte)(Math.Clamp(newCol.R + rand.Next(-mutationStrength, mutationStrength + 1), 0, 255));
-            newCol.G = (byte)(Math.Clamp(newCol.G + rand.Next(-mutationStrength, mutationStrength + 1), 0, 255));
-            newCol.B = (byte)(Math.Clamp(newCol.B + rand.Next(-mutationStrength, mutationStrength + 1), 0, 255));
+            newCol.Mutate(mutationStrength, rand);
             return newCol;
         }
 
-        public static Color Uniform()
+        public static void IncrementUniform()
         {
-            return uniformCol;
+            uniformCol.Mutate(mutationStrength, rand);
         }
 
-        public static Color Preservation(Sheep[,] world, Sheep sheep, int winner)
+        public static HSV Rainbow(HSV col)
         {
-            Color newCol;
+            col.h = (col.h + mutationStrength) % 360;
+            return col;
+        }
+
+        public static ColorSpace Preservation(Sheep[,] world, Sheep sheep, int winner)
+        {
+            ColorSpace newCol;
             List<Sheep> neighbors = GetNeighbours(world, sheep, true);
-            int lowest = 999;
+            double lowest = double.MaxValue;
             int lowestIndex = 0;
             int current = 0;
 
             foreach (Sheep s in neighbors)
             {
-                int sum = Math.Abs(s.color.R - sheep.color.R) + Math.Abs(s.color.G - sheep.color.G) + Math.Abs(s.color.B - sheep.color.B);
+                double sum = s.color.GetDiff(sheep.color);
                 if (sum < lowest && s.species == winner)
                 {
                     lowest = sum;
@@ -105,21 +110,13 @@ namespace SGeneSheep
             }
 
             newCol = neighbors[lowestIndex].color;
-            newCol.R = (byte)(Math.Clamp(newCol.R + rand.Next(-mutationStrength, mutationStrength + 1), 0, 255));
-            newCol.G = (byte)(Math.Clamp(newCol.G + rand.Next(-mutationStrength, mutationStrength + 1), 0, 255));
-            newCol.B = (byte)(Math.Clamp(newCol.B + rand.Next(-mutationStrength, mutationStrength + 1), 0, 255));
-
+            newCol.Mutate(mutationStrength, rand);
             return newCol;
         }
 
-        public static Color ThrowAway(Color col)
+        public static ColorSpace Mirror(Sheep[,] world, Sheep sheep, int winner)
         {
-            return new Color(col.R + 1, col.R + 1, col.R + 1);
-        }
-
-        public static Color Mirror(Sheep[,] world, Sheep sheep, int winner)
-        {
-            Color newCol;
+            ColorSpace newCol;
             int mirrorX;
             int mirrorY;
             mirrorX = world.GetLength(0) - sheep.x - 1;
@@ -142,9 +139,8 @@ namespace SGeneSheep
                     }
                 }
             }
-            newCol.R = (byte)(Math.Clamp(newCol.R + rand.Next(-mutationStrength, mutationStrength + 1), 0, 255));
-            newCol.G = (byte)(Math.Clamp(newCol.G + rand.Next(-mutationStrength, mutationStrength + 1), 0, 255));
-            newCol.B = (byte)(Math.Clamp(newCol.B + rand.Next(-mutationStrength, mutationStrength + 1), 0, 255));
+
+            newCol.Mutate(mutationStrength, rand);
             return newCol;
         }
 
