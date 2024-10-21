@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Data;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -14,7 +15,7 @@ namespace SGeneSheep
         static int[] djs = new[] { -1, 0, 1, 1, 1, 0, -1, -1 };
         public static float mutationStrength;
         static Random rand = new();
-        public static HSL uniformCol = new HSL(rand.Next(360), 0.7f, 0.4f);
+        public static HSV uniformCol = new HSV(rand.Next(360), rand.NextSingle(), rand.NextSingle());
 
         //At an offset of 4 makes spiral structures, as offset gets closer to 0 spirals become less distinct 
         public static ColorSpace Spiral(Sheep[,] world, Sheep sheep, int winner, int offset)
@@ -84,10 +85,26 @@ namespace SGeneSheep
             uniformCol.Mutate(mutationStrength, rand);
         }
 
-        public static HSV Rainbow(HSV col)
+        public static RGB WireFrameHighlights(RGB col)
         {
-            col.h = (col.h + mutationStrength) % 360;
-            return col;
+            float newG = col.g + mutationStrength;
+            float newB = col.b;
+            float newR = col.r;
+
+            if (newG >= 255)
+            {
+                newB += mutationStrength;
+            }
+            if (newB >= 255)
+            {
+                newR += mutationStrength;
+            }
+
+            return new RGB(newR, newG, newB);
+        }
+        public static RGB WireFrameBW(RGB col)
+        {
+            return new RGB(col.r + mutationStrength, col.g + mutationStrength, col.b + mutationStrength);
         }
 
         public static ColorSpace Preservation(Sheep[,] world, Sheep sheep, int winner)

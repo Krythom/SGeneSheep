@@ -27,22 +27,24 @@ namespace SGeneSheep
         readonly Random rand = new();
         private readonly RandomEx _randBools = new();
         Sheep[,] world;
-        List<Sheep> i = new();
+        List<Sheep> species = new();
 
 
         bool completed = false;
         bool saved = false;
         int iterations = 0;
         HashSet<(int, int)> checkSet = new();
+        List<SheepChange> _changed = [];
 
-        int worldX = 500;
-        int worldY = 500;
-        int numSpecies = 10;
+        int worldX = 1000;
+        int worldY = 1000;
+        int numSpecies = 5;
         const double Tolerance = 10;
-        const float ColorVariation = 10f;
+        const float ColorVariation = 1f;
         const int MaxIterations = -1;
-        const bool BatchMode = false;
+        const bool BatchMode = true;
         const bool FromImage = false;
+        const bool SimultaneousUpdate = true;
 
         private const int _speedup = 1;
 
@@ -62,7 +64,7 @@ namespace SGeneSheep
 
         public struct SheepChange
         {
-            public (int, int) loc;
+            public Point loc;
             public int id;
             public ColorSpace color;
 
@@ -105,6 +107,10 @@ namespace SGeneSheep
                     saved = false;
                     Initialize();
                     iterations = 0;
+                }
+                else
+                {
+                    Exit();
                 }
             }
             else
@@ -179,17 +185,17 @@ namespace SGeneSheep
             else
             {
                 world = new Sheep[worldX, worldY];
-                i.Clear();
+                species.Clear();
                 for (int i = 0; i < numSpecies; i++)
                 {
-                    this.i.Add(new Sheep(Mutator.uniformCol, i));
+                    this.species.Add(new Sheep(new RGB(0,0,0), i));
                 }
 
                 for (int x = 0; x < worldX; x++)
                 {
                     for (int y = 0; y < worldY; y++)
                     {
-                        world[x, y] = i[rand.Next(i.Count)].DeepCopy();
+                        world[x, y] = species[rand.Next(species.Count)].DeepCopy();
                         world[x, y].x = x;
                         world[x, y].y = y;
                         _colors.Span[x,y] = world[x,y].color.ToColor();
@@ -224,17 +230,26 @@ namespace SGeneSheep
                 else if (winningSpecies != s.species)
                 {
                     changed++;
-                    s.species = winningSpecies;
-                    s.color = Mutator.uniformCol;
-                    _colors.Span[x, y] = s.color.ToColor();
-
-
-                    foreach (var (dx, dy) in dirs)
+                    if (SimultaneousUpdate)
                     {
-                        var xp = Mod(s.x + dx, worldX);
-                        var yp = Mod(s.y + dy, worldY);
+                        _changed.Add(new() { color = Mutator.WireFrameBW((RGB) s.color), id = winningSpecies, loc = new(loc.Item1, loc.Item2) });
+                    }
+                    else
+                    {
+                        s.species = winningSpecies;
+                        s.color = Mutator.uniformCol;
+                        _colors.Span[x, y] = s.color.ToColor();
+                    }
 
-                        toWake[(xp, yp)] = 0;
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        for (int dy = -1; dy <= 1; dy++)
+                        {
+                            var xp = Mod(s.x + dx, worldX);
+                            var yp = Mod(s.y + dy, worldY);
+
+                            toWake[(xp, yp)] = 0;
+                        }
                     }
                 }
             }
@@ -242,6 +257,17 @@ namespace SGeneSheep
             if (changed == 0 || iterations == MaxIterations)
             {
                 completed = true;
+            }
+
+            if (SimultaneousUpdate)
+            {
+                foreach (SheepChange c in _changed)
+                {
+                    Sheep s = world[c.loc.X, c.loc.Y];
+                    s.species = c.id;
+                    s.color = c.color;
+                    _colors.Span[s.x, s.y] = s.color.ToColor();
+                }
             }
 
             foreach (var loc in toSleep.Keys)
@@ -253,19 +279,8 @@ namespace SGeneSheep
                 checkSet.Add((loc.Item1, loc.Item2));
             }
             Mutator.IncrementUniform();
+            _changed.Clear();
         }
-
-        private static readonly (int, int)[] dirs =
-        [
-            (-1, -1),
-            (0, -1),
-            (1, -1),
-            (-1, 0),
-            (1, 0),
-            (-1, 1),
-            (0, 1),
-            (1, 1)
-        ];
 
         public class RandomEx : Random
         {
