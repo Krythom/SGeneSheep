@@ -36,15 +36,15 @@ namespace SGeneSheep
         HashSet<(int, int)> checkSet = new();
         List<SheepChange> _changed = [];
 
-        int worldX = 1000;
-        int worldY = 1000;
+        int worldX = 300;
+        int worldY = 300;
         int numSpecies = 5;
         const double Tolerance = 10;
         const float ColorVariation = 1f;
         const int MaxIterations = -1;
         const bool BatchMode = true;
         const bool FromImage = false;
-        const bool SimultaneousUpdate = true;
+        const bool SimultaneousUpdate = false;
 
         private const int _speedup = 1;
 
@@ -188,7 +188,7 @@ namespace SGeneSheep
                 species.Clear();
                 for (int i = 0; i < numSpecies; i++)
                 {
-                    this.species.Add(new Sheep(new RGB(0,0,0), i));
+                    species.Add(new Sheep(Mutator.uniformCol, i));
                 }
 
                 for (int x = 0; x < worldX; x++)
@@ -213,6 +213,7 @@ namespace SGeneSheep
         [MethodImpl(MethodImplOptions.AggressiveOptimization)]
         private void Iterate()
         {
+            Mutator.IncrementUniform();
             int changed = 0;
             toSleep.Clear();
             toWake.Clear();
@@ -232,7 +233,7 @@ namespace SGeneSheep
                     changed++;
                     if (SimultaneousUpdate)
                     {
-                        _changed.Add(new() { color = Mutator.WireFrameBW((RGB) s.color), id = winningSpecies, loc = new(loc.Item1, loc.Item2) });
+                        _changed.Add(new() { color = Mutator.Spiral(world, s, winningSpecies, 0), id = winningSpecies, loc = new(loc.Item1, loc.Item2) });
                     }
                     else
                     {
